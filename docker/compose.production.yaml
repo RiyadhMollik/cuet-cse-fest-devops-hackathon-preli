@@ -19,6 +19,8 @@ services:
       timeout: 10s
       retries: 5
       start_period: 40s
+    # Graceful shutdown period (in seconds)
+    stop_grace_period: 30s
     # Security: MongoDB is NOT exposed to the host
     deploy:
       resources:
@@ -35,10 +37,12 @@ services:
         max-file: "3"
     security_opt:
       - no-new-privileges:true
-    # Read-only root filesystem for security (except for data directories)
-    read_only: true
-    tmpfs:
-      - /tmp
+    labels:
+      - "com.ecom.service=mongodb"
+      - "com.ecom.environment=production"
+      - "com.ecom.version=1.0.0"
+    # Note: MongoDB cannot use read_only filesystem as it needs to write to /data/db
+    # Security is maintained through network isolation and proper authentication
 
   # Backend Service
   backend:
@@ -67,6 +71,8 @@ services:
       retries: 3
       start_period: 40s
     # Security: Backend is NOT exposed to the host - only accessible through gateway
+    # Graceful shutdown period (in seconds)
+    stop_grace_period: 30s
     deploy:
       resources:
         limits:
@@ -82,6 +88,10 @@ services:
         max-file: "3"
     security_opt:
       - no-new-privileges:true
+    labels:
+      - "com.ecom.service=backend"
+      - "com.ecom.environment=production"
+      - "com.ecom.version=1.0.0"
     # Read-only root filesystem for security
     read_only: true
     tmpfs:
@@ -128,8 +138,14 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+    # Graceful shutdown period (in seconds)
+    stop_grace_period: 30s
     security_opt:
       - no-new-privileges:true
+    labels:
+      - "com.ecom.service=gateway"
+      - "com.ecom.environment=production"
+      - "com.ecom.version=1.0.0"
     # Read-only root filesystem for security
     read_only: true
     tmpfs:
@@ -140,6 +156,9 @@ networks:
     driver: bridge
     name: ecom-network-prod
     internal: false  # Gateway needs external access
+    labels:
+      - "com.ecom.network=app-network"
+      - "com.ecom.environment=production"
 
 volumes:
   mongo-data-prod:

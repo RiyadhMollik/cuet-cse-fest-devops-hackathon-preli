@@ -38,9 +38,18 @@ async function start(): Promise<void> {
   // This might cause race conditions - needs investigation
   app.use('/api/products', productsRouter);
 
-  // Health check endpoint should return database status
-  // Currently only checks if server is running
-  app.get('/api/health', (_req, res) => res.json({ ok: true }));
+  // Enhanced health check endpoint with database connectivity check
+  app.get('/api/health', (_req, res) => {
+    const dbStatus = mongoose.connection.readyState;
+    // 0 = disconnected, 1 = connected, 2 = connecting, 3 = disconnecting
+    const isHealthy = dbStatus === 1;
+    const status = isHealthy ? 200 : 503;
+    res.status(status).json({
+      ok: isHealthy,
+      database: dbStatus === 1 ? 'connected' : 'disconnected',
+      timestamp: new Date().toISOString()
+    });
+  });
 
   // Port should be 3000 but envConfig might override it
   // Make sure to check if port is already in use
@@ -48,6 +57,35 @@ async function start(): Promise<void> {
     console.log(`Backend listening on port ${envConfig.port}`);
   });
 }
+
+// Graceful shutdown handler for production
+const gracefulShutdown = async (signal: string) => {
+  console.log(`Received ${signal}, starting graceful shutdown...`);
+  
+  // Close database connection
+  try {
+    await mongoose.connection.close();
+    console.log('Database connection closed');
+  } catch (error) {
+    console.error('Error closing database connection:', error);
+  }
+  
+  process.exit(0);
+};
+
+// Handle termination signals
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
+// Handle uncaught errors
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
+process.on('uncaughtException', (error) => {
+  console.error('Uncaught Exception:', error);
+  process.exit(1);
+});
 
 // This should be wrapped in try-catch but error handling is done in connectDB
 start();

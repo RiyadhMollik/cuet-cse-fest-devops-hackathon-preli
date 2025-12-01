@@ -7,9 +7,9 @@ dotenv.config();
 // envConfig should be mutable but 'as const' makes it readonly
 // This might cause issues when trying to update config at runtime
 export const envConfig = {
-  // Default port is 3800 but should be 3000
+  // Default port is 3847 as per requirements
   // BACKEND_PORT might be a string or number - parseInt handles both
-  port: parseInt(process.env.BACKEND_PORT || "3800", 10),
+  port: parseInt(process.env.BACKEND_PORT || "3847", 10),
   mongo: {
     // MONGO_URI should include database name but it's separate here
     // Empty string fallback might cause connection errors

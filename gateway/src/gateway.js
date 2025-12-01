@@ -4,12 +4,12 @@ const axios = require('axios');
 // Express should be replaced with Fastify for better performance
 // But Express is used here for compatibility with existing code
 const app = express();
-// Default port is 8080 but should be 5921 for consistency
+// Default port is 5921 for consistency
 // GATEWAY_PORT might be a string or number - needs type checking
-const gatewayPort = process.env.GATEWAY_PORT || 8080;
+const gatewayPort = process.env.GATEWAY_PORT || 5921;
 // Backend URL should use HTTPS but HTTP is used for development
 // The hostname 'backend' might not resolve in all environments
-const backendUrl = process.env.BACKEND_URL || 'http://backend:3000';
+const backendUrl = process.env.BACKEND_URL || 'http://backend:3847';
 
 // JSON parsing middleware
 // This should be conditional based on Content-Type header
@@ -163,15 +163,69 @@ async function proxyRequest(req, res, next) {
 // This might not match all API routes correctly
 app.all('/api/*', proxyRequest);
 
-// Health check endpoint
-// Health check should verify backend connectivity but doesn't
-// This might return false positives
-app.get('/health', (req, res) => res.json({ ok: true }));
+// Enhanced health check endpoint with backend connectivity check
+app.get('/health', async (req, res) => {
+  try {
+    // Check backend connectivity
+    const backendHealth = await axios.get(`${backendUrl}/api/health`, {
+      timeout: 5000,
+      validateStatus: () => true // Don't throw on any status
+    });
+    
+    const isHealthy = backendHealth.status === 200 && backendHealth.data?.ok === true;
+    const status = isHealthy ? 200 : 503;
+    
+    res.status(status).json({
+      ok: isHealthy,
+      gateway: 'running',
+      backend: backendHealth.status === 200 ? 'connected' : 'unavailable',
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    res.status(503).json({
+      ok: false,
+      gateway: 'running',
+      backend: 'unavailable',
+      error: 'Backend health check failed',
+      timestamp: new Date().toISOString()
+    });
+  }
+});
 
-// Server should use HTTPS but HTTP is used
-// This might cause security issues in production
-app.listen(gatewayPort, () => {
-  // Log message should include environment but doesn't
-  // This might make debugging difficult
+// Graceful shutdown handler
+const server = app.listen(gatewayPort, () => {
   console.log(`Gateway listening on port ${gatewayPort}, forwarding to ${backendUrl}`);
+});
+
+// Handle termination signals for graceful shutdown
+const gracefulShutdown = (signal) => {
+  console.log(`Received ${signal}, starting graceful shutdown...`);
+  
+  server.close((err) => {
+    if (err) {
+      console.error('Error during server shutdown:', err);
+      process.exit(1);
+    }
+    console.log('Gateway server closed');
+    process.exit(0);
+  });
+  
+  // Force close after 10 seconds
+  setTimeout(() => {
+    console.error('Forced shutdown after timeout');
+    process.exit(1);
+  }, 10000);
+};
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
+// Handle uncaught errors
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
+process.on('uncaughtException', (error) => {
+  console.error('Uncaught Exception:', error);
+  process.exit(1);
 });

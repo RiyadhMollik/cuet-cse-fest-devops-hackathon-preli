@@ -8,16 +8,15 @@ WORKDIR /app
 # Copy package files for dependency installation
 COPY package*.json ./
 
-# Install dependencies (including dev dependencies for building)
-RUN npm install --only=production --ignore-scripts && \
+# Install all dependencies (including dev dependencies for building)
+RUN npm install --ignore-scripts && \
     npm cache clean --force
 
 # Copy source code
 COPY . .
 
-# Install dev dependencies and build TypeScript
-RUN npm install --only=development && \
-    npm run build && \
+# Build TypeScript
+RUN npm run build && \
     npm prune --production
 
 # Stage 2: Production stage

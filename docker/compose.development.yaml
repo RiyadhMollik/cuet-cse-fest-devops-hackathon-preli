@@ -1,6 +1,101 @@
-# services:
-  # backend:
+services:
+  # MongoDB Database Service
+  mongo:
+    image: mongo:7.0-jammy
+    container_name: ecom-mongo-dev
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD}
+    volumes:
+      # Data persistence for development
+      - mongo-data-dev:/data/db
+      - mongo-config-dev:/data/configdb
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+    # MongoDB is NOT exposed to the host - only accessible within Docker network
 
-  # gateway:
+  # Backend Service
+  backend:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile.dev
+    container_name: ecom-backend-dev
+    restart: unless-stopped
+    environment:
+      NODE_ENV: development
+      BACKEND_PORT: ${BACKEND_PORT}
+      MONGO_URI: ${MONGO_URI}
+      MONGO_DATABASE: ${MONGO_DATABASE}
+    volumes:
+      # Hot-reload: mount source code
+      - ../backend/src:/app/src:ro
+      - ../backend/package.json:/app/package.json:ro
+      - ../backend/tsconfig.json:/app/tsconfig.json:ro
+      # Prevent node_modules from being overwritten
+      - backend-node-modules:/app/node_modules
+    networks:
+      - app-network
+    depends_on:
+      mongo:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3847/api/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    # Backend is NOT exposed to the host - only accessible through gateway
 
-  # mongo:
+  # Gateway Service
+  gateway:
+    build:
+      context: ../gateway
+      dockerfile: Dockerfile.dev
+    container_name: ecom-gateway-dev
+    restart: unless-stopped
+    ports:
+      # Only the gateway is exposed to the host
+      - "${GATEWAY_PORT}:5921"
+    environment:
+      NODE_ENV: development
+      GATEWAY_PORT: ${GATEWAY_PORT}
+      BACKEND_URL: http://backend:3847
+    volumes:
+      # Hot-reload: mount source code
+      - ../gateway/src:/app/src:ro
+      - ../gateway/package.json:/app/package.json:ro
+      # Prevent node_modules from being overwritten
+      - gateway-node-modules:/app/node_modules
+    networks:
+      - app-network
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:5921/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+networks:
+  app-network:
+    driver: bridge
+    name: ecom-network-dev
+
+volumes:
+  mongo-data-dev:
+    name: ecom-mongo-data-dev
+  mongo-config-dev:
+    name: ecom-mongo-config-dev
+  backend-node-modules:
+    name: ecom-backend-node-modules-dev
+  gateway-node-modules:
+    name: ecom-gateway-node-modules-dev

@@ -1,0 +1,26 @@
+# Development Dockerfile with hot-reload
+FROM node:20-alpine
+
+# Install dumb-init
+RUN apk add --no-cache dumb-init
+
+# Set working directory
+WORKDIR /app
+
+# Copy package files
+COPY package*.json ./
+
+# Install all dependencies (including dev dependencies)
+RUN npm install && npm cache clean --force
+
+# Copy source code (will be overridden by volume mount in development)
+COPY . .
+
+# Expose gateway port
+EXPOSE 5921
+
+# Use dumb-init to handle signals properly
+ENTRYPOINT ["dumb-init", "--"]
+
+# Start development server with hot-reload
+CMD ["npm", "run", "dev"]
